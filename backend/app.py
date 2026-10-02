@@ -2,13 +2,28 @@ from flask import Flask, jsonify
 import boto3
 import json
 
+from backend.config_manager import ConfigManager
+
 app = Flask(__name__)
 
 REGION = "ap-south-1"
 
-ssm = boto3.client("ssm", region_name=REGION)
-secrets = boto3.client("secretsmanager", region_name=REGION)
-sts = boto3.client("sts", region_name=REGION)
+secrets = boto3.client(
+    "secretsmanager",
+    region_name=REGION
+)
+
+sts = boto3.client(
+    "sts",
+    region_name=REGION
+)
+
+# Configuration is loaded from Parameter Store
+# and cached for 60 seconds.
+config_manager = ConfigManager(
+    environment="dev",
+    ttl=60
+)
 
 
 @app.route("/")
@@ -29,25 +44,30 @@ def health():
 
 @app.route("/config")
 def config():
-    port = ssm.get_parameter(
-        Name="/myapp/dev/app/port"
-    )["Parameter"]["Value"]
-
-    log_level = ssm.get_parameter(
-        Name="/myapp/dev/app/log_level"
-    )["Parameter"]["Value"]
-
-    payment_enabled = ssm.get_parameter(
-        Name="/myapp/dev/features/payment_enabled"
-    )["Parameter"]["Value"]
+    configuration = config_manager.get_config()
 
     return jsonify({
         "environment": "DEV",
         "configuration": {
-            "port": port,
-            "log_level": log_level,
-            "payment_enabled": payment_enabled
-        }
+            "port": configuration.get("app/port"),
+            "log_level": configuration.get("app/log_level"),
+            "payment_enabled": configuration.get(
+                "features/payment_enabled"
+            )
+        },
+        "source": "AWS Parameter Store",
+        "cache_ttl_seconds": 60
+    })
+
+
+@app.route("/config/refresh")
+def refresh_config():
+    configuration = config_manager.refresh()
+
+    return jsonify({
+        "environment": "DEV",
+        "status": "configuration refreshed",
+        "parameters_loaded": len(configuration)
     })
 
 
@@ -57,7 +77,9 @@ def secret_status():
         SecretId="/myapp/dev/database"
     )
 
-    secret = json.loads(response["SecretString"])
+    secret = json.loads(
+        response["SecretString"]
+    )
 
     return jsonify({
         "environment": "DEV",
@@ -81,4 +103,4 @@ if __name__ == "__main__":
     app.run(
         host="0.0.0.0",
         port=5000
-)
+    )
