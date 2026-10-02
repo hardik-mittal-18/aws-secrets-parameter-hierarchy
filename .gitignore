@@ -1,0 +1,16 @@
+__pycache__/
+*.py[cod]
+venv/
+.venv/
+.env
+.env.*
+*.pem
+*.key
+.aws/
+credentials
+config
+.vscode/
+.idea/
+*.log
+.pytest_cache/
+.coverage
